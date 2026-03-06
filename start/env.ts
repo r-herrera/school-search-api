@@ -15,6 +15,9 @@ export default await Env.create(new URL('../', import.meta.url), {
   DB_PASSWORD: Env.schema.string.optional(),
   DB_DATABASE: Env.schema.string(),
   
+  // SSL
+  DB_SSL: Env.schema.boolean.optional(),
+
   // Region configuration
   DB_REGION: Env.schema.enum(['us', 'china', 'eu'] as const),
   DB_IS_MASTER: Env.schema.string.optional(),
