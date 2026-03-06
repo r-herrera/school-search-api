@@ -391,7 +391,7 @@ export default class InstitutionRepository {
    * Optionally filters by country and/or city.
    * Returns paginated results with ranking explanation and full EXPLAIN metrics.
    */
-  async searchPaginated(
+ async searchPaginated(
     term: string,
     method: 'websearch' | 'trgm' = 'websearch',
     page: number = 1,
@@ -401,6 +401,10 @@ export default class InstitutionRepository {
     const startTime = performance.now()
     const tables = this.getAllRegionTables()
     const offset = (page - 1) * limit
+
+    // Per-branch limit: fetch enough rows from each region so that
+    // the global top-(offset+limit) is guaranteed to be present.
+    const branchLimit = offset + limit
 
     // Build optional filter conditions
     const filterConditions: string[] = []
@@ -439,22 +443,28 @@ export default class InstitutionRepository {
       countSql = `SELECT COUNT(*) as total FROM (${countUnions}) _union`
       countParams = tables.flatMap(() => [term, term, ...filterParams])
 
-      // Build UNION ALL for data across all region tables
+      // Build UNION ALL for data with LIMIT PUSHDOWN into each branch
       const dataUnions = tables.map(t =>
-        `SELECT *, similarity(organisation_name, ?) as relevance FROM ${t} ${whereClause}`
+        `SELECT * FROM (
+          SELECT *, similarity(organisation_name, ?) as relevance
+          FROM ${t} ${whereClause}
+          ORDER BY similarity(organisation_name, ?) DESC, organisation_name ASC
+          LIMIT ?
+        ) _${t.replace(/\./g, '_')}`
       ).join(' UNION ALL ')
       dataSql = `
         SELECT * FROM (${dataUnions}) _union
         ORDER BY relevance DESC, organisation_name ASC
         LIMIT ? OFFSET ?
       `
-      dataParams = tables.flatMap(() => [term, term, term, ...filterParams])
+      // Each branch needs: similarity_select_term, where_term1, where_term2, ...filterParams, order_term, branchLimit
+      dataParams = tables.flatMap(() => [term, term, term, ...filterParams, term, branchLimit])
       dataParams.push(limit, offset)
 
       rankingExplanation = `Showing results ranked by how closely each name resembles your search "${term}". ` +
         `This method is forgiving of typos and spelling variations — even approximate matches will appear.`
 
-      rankingTechnicalDetail = `pg_trgm similarity search with threshold 0.3 across ${tables.length} regions (UNION ALL). ` +
+      rankingTechnicalDetail = `pg_trgm similarity search with threshold 0.3 across ${tables.length} regions (UNION ALL with per-branch LIMIT pushdown). ` +
         `Scores computed via similarity(organisation_name, '${term}'). ` +
         `Uses GIN index (gin_trgm_ops) on organisation_name. Matches on both name and city fields.`
     } else {
@@ -468,23 +478,29 @@ export default class InstitutionRepository {
       countSql = `SELECT COUNT(*) as total FROM (${countUnions}) _union`
       countParams = tables.flatMap(() => [term, ...filterParams])
 
-      // Build UNION ALL for data
+      // Build UNION ALL for data with LIMIT PUSHDOWN into each branch
       const dataUnions = tables.map(t =>
-        `SELECT *, ts_rank(search_vector, websearch_to_tsquery('english', ?)) as relevance FROM ${t} ${whereClause}`
+        `SELECT * FROM (
+          SELECT *, ts_rank(search_vector, websearch_to_tsquery('english', ?)) as relevance
+          FROM ${t} ${whereClause}
+          ORDER BY ts_rank(search_vector, websearch_to_tsquery('english', ?)) DESC, organisation_name ASC
+          LIMIT ?
+        ) _${t.replace(/\./g, '_')}`
       ).join(' UNION ALL ')
       dataSql = `
         SELECT * FROM (${dataUnions}) _union
         ORDER BY relevance DESC, organisation_name ASC
         LIMIT ? OFFSET ?
       `
-      dataParams = tables.flatMap(() => [term, term, ...filterParams])
+      // Each branch needs: rank_term, where_term, ...filterParams, order_term, branchLimit
+      dataParams = tables.flatMap(() => [term, term, ...filterParams, term, branchLimit])
       dataParams.push(limit, offset)
 
       rankingExplanation = `Showing the most relevant results for "${term}". ` +
         `Institutions whose names closely match your query appear first. ` +
         `You can use phrases ("state university"), combine terms (college OR school), or exclude words (-private).`
 
-      rankingTechnicalDetail = `Full-text search via websearch_to_tsquery('english', '${term}') with ts_rank scoring across ${tables.length} regions (UNION ALL). ` +
+      rankingTechnicalDetail = `Full-text search via websearch_to_tsquery('english', '${term}') with ts_rank scoring across ${tables.length} regions (UNION ALL with per-branch LIMIT pushdown). ` +
         `Uses GIN index on tsvector search_vector column (weighted: A=name, B=city, C=country).`
     }
 
