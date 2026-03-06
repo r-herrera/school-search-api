@@ -547,6 +547,117 @@ export default class InstitutionRepository {
   }
 
   // ==========================================
+  // PAGINATED BROWSE (location-only, no search term)
+  // ==========================================
+
+  /**
+   * Browse institutions by country (and optionally city) with pagination.
+   * No search term required. Uses exact country match to enable index pushdown
+   * on remote FDW servers, keeping cross-region queries within 3–5 seconds.
+   */
+  async browsePaginated(
+    page: number = 1,
+    limit: number = 25,
+    filters: { country: string; city?: string }
+  ): Promise<PaginatedResult & { ranking_explanation: string; ranking_technical_detail: string }> {
+    const startTime = performance.now()
+    const tables = this.getAllRegionTables()
+    const offset = (page - 1) * limit
+
+    // Per-branch limit: fetch enough rows from each region so global top-(offset+limit) is present
+    const branchLimit = offset + limit
+
+    // country = exact match (index-friendly; values come from dropdown)
+    const countryParam = filters.country
+
+    // city uses ILIKE for partial match
+    const cityCondition = filters.city ? ` AND city ILIKE ?` : ''
+    const cityParam = filters.city ? `%${filters.city}%` : null
+
+    // Per-branch params: [countryParam, ...optional cityParam]
+    const branchParams: any[] = [countryParam]
+    if (cityParam) branchParams.push(cityParam)
+
+    const whereClause = `WHERE country = ?${cityCondition}`
+
+    // Count UNION ALL
+    const countUnions = tables.map(t =>
+      `SELECT 1 FROM ${t} ${whereClause}`
+    ).join(' UNION ALL ')
+    const countSql = `SELECT COUNT(*) as total FROM (${countUnions}) _union`
+    const countParams = tables.flatMap(() => [...branchParams])
+
+    // Data UNION ALL with per-branch LIMIT pushdown
+    const dataUnions = tables.map(t =>
+      `SELECT * FROM (
+        SELECT * FROM ${t} ${whereClause}
+        ORDER BY organisation_name ASC
+        LIMIT ?
+      ) _${t.replace(/[^a-z0-9]/gi, '_')}`
+    ).join(' UNION ALL ')
+    const dataSql = `
+      SELECT * FROM (${dataUnions}) _union
+      ORDER BY organisation_name ASC
+      LIMIT ? OFFSET ?
+    `
+    const dataParams = tables.flatMap(() => [...branchParams, branchLimit])
+    dataParams.push(limit, offset)
+
+    // Run count and data in parallel
+    const [countResult, dataResult] = await Promise.all([
+      db.rawQuery<{ rows: { total: string }[] }>(countSql, countParams),
+      db.rawQuery<{ rows: Institution[] }>(dataSql, dataParams),
+    ])
+
+    const total = parseInt(countResult.rows[0].total, 10)
+    const duration_ms = performance.now() - startTime
+
+    const explain = await this.metricsService.getExplainAnalyze(dataSql, dataParams)
+    const lastPage = Math.max(1, Math.ceil(total / limit))
+
+    const locationLabel = filters.city
+      ? `${filters.country} / ${filters.city}`
+      : filters.country
+
+    const metrics = this.metricsService.buildMetrics(
+      duration_ms,
+      dataResult.rows.length,
+      tables.length > 1 ? 'union' : this.getQuerySource(),
+      explain,
+      {
+        ...this.getConnectionInfo(),
+        table_used: tables.length > 1 ? `UNION ALL (${tables.join(', ')})` : tables[0],
+      },
+      'browse_paginated',
+      locationLabel
+    )
+
+    const rankingExplanation = filters.city
+      ? `Showing all institutions in ${filters.city}, ${filters.country}, sorted alphabetically.`
+      : `Showing all institutions in ${filters.country}, sorted alphabetically.`
+
+    const rankingTechnicalDetail = `Location browse — exact country match (= operator, B-tree index) across ${tables.length} region(s) via UNION ALL with per-branch LIMIT pushdown.` +
+      (filters.city ? ` City filtered with ILIKE.` : '') +
+      ` Index: idx_institutions_country.`
+
+    return {
+      data: dataResult.rows,
+      meta: {
+        total,
+        per_page: limit,
+        current_page: page,
+        last_page: lastPage,
+        first_page: 1,
+        next_page_url: page < lastPage ? `?country=${encodeURIComponent(filters.country)}&page=${page + 1}&limit=${limit}` : null,
+        previous_page_url: page > 1 ? `?country=${encodeURIComponent(filters.country)}&page=${page - 1}&limit=${limit}` : null,
+      },
+      metrics,
+      ranking_explanation: rankingExplanation,
+      ranking_technical_detail: rankingTechnicalDetail,
+    }
+  }
+
+  // ==========================================
   // FILTER METHODS
   // ==========================================
 

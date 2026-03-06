@@ -79,8 +79,10 @@ router.group(() => {
   // ==========================================
 
   // Paginated search with ranking (primary search endpoint)
+  // Browse by location without a search term
   router.group(() => {
     router.get('/paginated', [SearchController, 'searchPaginated'])
+    router.get('/browse', [SearchController, 'browsePaginated'])
   }).prefix('search')
 
   // Location dropdowns (countries, cities)

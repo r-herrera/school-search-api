@@ -211,6 +211,25 @@ export default class SearchController {
     return response.json(comparison)
   }
 
+  /**
+   * Browse institutions by country (and optionally city) — no search term required.
+   * Uses exact country match for index-friendly cross-region queries.
+   * GET /api/search/browse?country=United+Kingdom&city=London&page=1&limit=25
+   */
+  async browsePaginated({ request, response }: HttpContext) {
+    const country = (request.input('country', '') as string).trim()
+    const city = (request.input('city', '') as string).trim() || undefined
+    const page = Math.max(1, parseInt(request.input('page', '1'), 10))
+    const limit = Math.min(100, Math.max(1, parseInt(request.input('limit', '25'), 10)))
+
+    if (!country) {
+      return response.badRequest({ error: 'Query parameter "country" is required' })
+    }
+
+    const result = await this.repo.browsePaginated(page, limit, { country, city })
+    return response.json(result)
+  }
+
   private getFastestMethod(results: Record<string, { metrics: { duration_ms: number } }>) {
     let fastest = ''
     let minDuration = Infinity
