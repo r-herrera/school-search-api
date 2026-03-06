@@ -10,7 +10,7 @@ const StatsController = () => import('#controllers/stats_controller')
 const LocationController = () => import('#controllers/location_controller')
 
 // Root endpoint - API info
-router.get('/', async ({ request }) => {
+router.get('/', async ({}) => {
   const optionType = process.env.OPTION_TYPE || 'unknown'
   const region = process.env.DB_REGION || 'unknown'
   

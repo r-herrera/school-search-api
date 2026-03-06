@@ -117,6 +117,8 @@ export interface QueryMetrics {
   }
   query_type?: string
   search_term?: string
+  scan_type?: 'seq' | 'index' | 'bitmap' | 'foreign'
+  index_used?: string
 }
 
 /**

@@ -47,9 +47,10 @@ export default class MetricsService {
   async getExplainAnalyze(sql: string, params: any[] = []): Promise<ExplainOutput> {
     try {
       const explainSql = `EXPLAIN (ANALYZE, COSTS, BUFFERS, FORMAT JSON) ${sql}`
-      const result = await db.rawQuery<{ rows: any[] }>(explainSql, params)
+      const result = await db.rawQuery(explainSql, params)
 
-      const planJson = result.rows[0]['QUERY PLAN'] || result.rows[0]
+      const rows = (result as any).rows
+      const planJson = rows[0]['QUERY PLAN'] || rows[0]
       const plan = Array.isArray(planJson) ? planJson[0] : planJson
 
       return this.parsePlanJson(plan)
@@ -207,6 +208,8 @@ export default class MetricsService {
       connection,
       query_type,
       search_term,
+      scan_type: explain?.scan_type,
+      index_used: explain?.index_used,
     }
   }
 }

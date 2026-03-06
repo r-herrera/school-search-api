@@ -1,5 +1,6 @@
 import env from '#start/env'
-import { defineConfig, targets, type Logger } from '@adonisjs/core/logger'
+import { defineConfig, targets } from '@adonisjs/core/logger'
+import type { InferLoggers } from '@adonisjs/core/types'
 
 const loggerConfig = defineConfig({
   default: 'app',
@@ -21,7 +22,5 @@ const loggerConfig = defineConfig({
 export default loggerConfig
 
 declare module '@adonisjs/core/types' {
-  export interface ContainerBindings {
-    logger: Logger<typeof loggerConfig>
-  }
+  interface LoggersList extends InferLoggers<typeof loggerConfig> {}
 }

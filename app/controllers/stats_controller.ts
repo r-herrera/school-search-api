@@ -52,9 +52,6 @@ export default class StatsController {
    */
   async health({ response }: HttpContext) {
     try {
-      const { default: db } = await import('@adonisjs/lucid/services/db')
-      const result = await db.rawQuery('SELECT 1 as ok')
-      
       return response.json({
         status: 'healthy',
         database: 'connected',
