@@ -101,7 +101,8 @@ export default class InstitutionRepository {
     const pattern = `%${term}%`
 
     const sql = `
-      SELECT * FROM ${tableName}
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at
+      FROM ${tableName}
       WHERE organisation_name LIKE ?
          OR city LIKE ?
          OR country LIKE ?
@@ -135,7 +136,8 @@ export default class InstitutionRepository {
     const pattern = `%${term}%`
 
     const sql = `
-      SELECT * FROM ${tableName}
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at
+      FROM ${tableName}
       WHERE organisation_name ILIKE ?
          OR city ILIKE ?
          OR country ILIKE ?
@@ -168,7 +170,7 @@ export default class InstitutionRepository {
     const tableName = this.getTableName()
 
     const sql = `
-      SELECT *,
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at,
         ts_rank(search_vector, plainto_tsquery('english', ?)) as relevance
       FROM ${tableName}
       WHERE search_vector @@ plainto_tsquery('english', ?)
@@ -201,7 +203,7 @@ export default class InstitutionRepository {
     const tableName = this.getTableName()
 
     const sql = `
-      SELECT *,
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at,
         ts_rank(search_vector, websearch_to_tsquery('english', ?)) as relevance
       FROM ${tableName}
       WHERE search_vector @@ websearch_to_tsquery('english', ?)
@@ -234,7 +236,7 @@ export default class InstitutionRepository {
     const tableName = this.getTableName()
 
     const sql = `
-      SELECT *,
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at,
         similarity(organisation_name, ?) as sim_score
       FROM ${tableName}
       WHERE organisation_name % ?
@@ -278,14 +280,15 @@ export default class InstitutionRepository {
     if (optionType === 'raw_fdw') {
       // Option 1: UNION ALL across local + foreign tables
       // The foreign schemas depend on which region we're connected to
+      const cols = 'id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at'
       if (region === 'eu') {
         sql = `
           SELECT * FROM (
-            SELECT * FROM institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM institutions WHERE organisation_name ILIKE ?
             UNION ALL
-            SELECT * FROM foreign_us.institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM foreign_us.institutions WHERE organisation_name ILIKE ?
             UNION ALL
-            SELECT * FROM foreign_china.institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM foreign_china.institutions WHERE organisation_name ILIKE ?
           ) combined
           ORDER BY organisation_name ASC
           LIMIT ?
@@ -293,11 +296,11 @@ export default class InstitutionRepository {
       } else if (region === 'us') {
         sql = `
           SELECT * FROM (
-            SELECT * FROM institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM institutions WHERE organisation_name ILIKE ?
             UNION ALL
-            SELECT * FROM foreign_eu.institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM foreign_eu.institutions WHERE organisation_name ILIKE ?
             UNION ALL
-            SELECT * FROM foreign_china.institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM foreign_china.institutions WHERE organisation_name ILIKE ?
           ) combined
           ORDER BY organisation_name ASC
           LIMIT ?
@@ -306,11 +309,11 @@ export default class InstitutionRepository {
         // china
         sql = `
           SELECT * FROM (
-            SELECT * FROM institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM institutions WHERE organisation_name ILIKE ?
             UNION ALL
-            SELECT * FROM foreign_us.institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM foreign_us.institutions WHERE organisation_name ILIKE ?
             UNION ALL
-            SELECT * FROM foreign_eu.institutions WHERE organisation_name ILIKE ?
+            SELECT ${cols} FROM foreign_eu.institutions WHERE organisation_name ILIKE ?
           ) combined
           ORDER BY organisation_name ASC
           LIMIT ?
@@ -320,7 +323,8 @@ export default class InstitutionRepository {
     } else {
       // For other options, just use the main table
       sql = `
-        SELECT * FROM ${this.getTableName()}
+        SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at
+        FROM ${this.getTableName()}
         WHERE organisation_name ILIKE ?
         ORDER BY organisation_name ASC
         LIMIT ?
@@ -355,7 +359,9 @@ export default class InstitutionRepository {
 
     const sql = `
       SELECT DISTINCT ON (child.id)
-        child.*,
+        child.id, child.organisation_name, child.centre_number, child.parent_centre_number,
+        child.street_1, child.street_2, child.city, child.country, child.website,
+        child.region, child.created_at, child.updated_at,
         parent.organisation_name as parent_name,
         parent.region as parent_region
       FROM ${tableName} child
@@ -446,7 +452,8 @@ export default class InstitutionRepository {
       // Build UNION ALL for data with LIMIT PUSHDOWN into each branch
       const dataUnions = tables.map(t =>
         `SELECT * FROM (
-          SELECT *, similarity(organisation_name, ?) as relevance
+          SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at,
+            similarity(organisation_name, ?) as relevance
           FROM ${t} ${whereClause}
           ORDER BY similarity(organisation_name, ?) DESC, organisation_name ASC
           LIMIT ?
@@ -481,7 +488,8 @@ export default class InstitutionRepository {
       // Build UNION ALL for data with LIMIT PUSHDOWN into each branch
       const dataUnions = tables.map(t =>
         `SELECT * FROM (
-          SELECT *, ts_rank(search_vector, websearch_to_tsquery('english', ?)) as relevance
+          SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at,
+            ts_rank(search_vector, websearch_to_tsquery('english', ?)) as relevance
           FROM ${t} ${whereClause}
           ORDER BY ts_rank(search_vector, websearch_to_tsquery('english', ?)) DESC, organisation_name ASC
           LIMIT ?
@@ -590,7 +598,8 @@ export default class InstitutionRepository {
     // Data UNION ALL with per-branch LIMIT pushdown
     const dataUnions = tables.map(t =>
       `SELECT * FROM (
-        SELECT * FROM ${t} ${whereClause}
+        SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at
+        FROM ${t} ${whereClause}
         ORDER BY organisation_name ASC
         LIMIT ?
       ) _${t.replace(/[^a-z0-9]/gi, '_')}`
@@ -669,7 +678,8 @@ export default class InstitutionRepository {
     const tableName = this.getTableName()
 
     const sql = `
-      SELECT * FROM ${tableName}
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at
+      FROM ${tableName}
       WHERE country ILIKE ?
       ORDER BY organisation_name ASC
       LIMIT ?
@@ -700,7 +710,8 @@ export default class InstitutionRepository {
     const tableName = this.getTableName()
 
     const sql = `
-      SELECT * FROM ${tableName}
+      SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at
+      FROM ${tableName}
       WHERE city ILIKE ?
       ORDER BY organisation_name ASC
       LIMIT ?
@@ -760,7 +771,7 @@ export default class InstitutionRepository {
     const total = parseInt(countResult.rows[0].total, 10)
 
     // Get data
-    const dataSql = `SELECT * FROM ${tableName} ${whereClause} ORDER BY id ASC LIMIT ? OFFSET ?`
+    const dataSql = `SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at FROM ${tableName} ${whereClause} ORDER BY id ASC LIMIT ? OFFSET ?`
     const dataParams = [...params, limit, offset]
     const dataResult = await db.rawQuery<{ rows: Institution[] }>(dataSql, dataParams)
     const duration_ms = performance.now() - startTime
@@ -819,7 +830,7 @@ export default class InstitutionRepository {
     const whereClause = `WHERE ${conditions.join(' AND ')}`
 
     // Get data
-    const dataSql = `SELECT * FROM ${tableName} ${whereClause} ORDER BY id ASC LIMIT ?`
+    const dataSql = `SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at FROM ${tableName} ${whereClause} ORDER BY id ASC LIMIT ?`
     const dataParams = [...params, limit]
     const dataResult = await db.rawQuery<{ rows: Institution[] }>(dataSql, dataParams)
     const duration_ms = performance.now() - startTime
@@ -1000,17 +1011,17 @@ export default class InstitutionRepository {
     let sql: string
     switch (queryType) {
       case 'like':
-        sql = `SELECT * FROM ${tableName} WHERE region = ? AND organisation_name LIKE ? LIMIT 20`
+        sql = `SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at FROM ${tableName} WHERE region = ? AND organisation_name LIKE ? LIMIT 20`
         break
       case 'tsvector':
-        sql = `SELECT * FROM ${tableName} WHERE region = ? AND search_vector @@ plainto_tsquery('english', ?) LIMIT 20`
+        sql = `SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at FROM ${tableName} WHERE region = ? AND search_vector @@ plainto_tsquery('english', ?) LIMIT 20`
         break
       case 'trgm':
-        sql = `SELECT * FROM ${tableName} WHERE region = ? AND organisation_name % ? LIMIT 20`
+        sql = `SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at FROM ${tableName} WHERE region = ? AND organisation_name % ? LIMIT 20`
         break
       case 'ilike':
       default:
-        sql = `SELECT * FROM ${tableName} WHERE region = ? AND organisation_name ILIKE ? LIMIT 20`
+        sql = `SELECT id, organisation_name, street_1, street_2, city, country, website, region, created_at, updated_at FROM ${tableName} WHERE region = ? AND organisation_name ILIKE ? LIMIT 20`
     }
 
     const explain = await this.metricsService.getExplainAnalyze(sql, [region, queryType === 'tsvector' ? term : pattern])

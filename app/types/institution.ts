@@ -3,42 +3,19 @@
  */
 export interface Institution {
   id: number
-  business_stream: string | null
-  prospect_customer: string | null
-  ci_status: string | null
   organisation_name: string
-  centre_number: string | null
-  ci_operational_status: string | null
-  parent_organisation: string | null
-  parent_centre_number: string | null
-  ecc_customer_bp_id: string | null
-  sap_business_partner_id: string | null
-  centre_urn: string | null
-  uk_school_dfe_number: string | null
-  c1_school_key: string | null
-  address_type: string | null
   street_1: string | null
   street_2: string | null
-  street_3: string | null
   city: string | null
-  state_province: string | null
   country: string | null
   website: string | null
-  created_date: string | null
-  last_modified_date: string | null
-  ci_business_stream: string | null
-  edu_resources_business_stream: string | null
-  cem_business_stream: string | null
-  cem_customer: string | null
-  previous_centre_number: string | null
-  cem_type_of_organisation: string | null
-  cem_status: string | null
-  cem_eligibility: string | null
-  cem_customer_type: string | null
   region: string | null
   created_at: string
   updated_at: string
   search_vector?: string
+  // Only present in JOIN search results
+  centre_number?: string | null
+  parent_centre_number?: string | null
 }
 
 /**
